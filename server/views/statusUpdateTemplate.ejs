@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    .email-box {
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+      border: 1px solid #eee;
+      background-color: #f9f9f9;
+    }
+    .email-box h2 {
+      text-align: center;
+    }
+    .order-details {
+      margin-top: 20px;
+    }
+    .order-details p {
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-box">
+    <h2>Your Order Status has been Updated</h2>
+    <p>Dear Customer,</p>
+    <p>Your order with ID <strong><%= order._id %></strong> has been updated. The new status is: <strong><%= status %></strong>.</p>
+    
+    <div class="order-details">
+      <h3>Order Details:</h3>
+      <p>Product: <%= order.product %></p>
+      <p>Quantity: <%= order.quantity %></p>
+      <p>Quantity: <%= order?.product?.size %></p>
+      <p>Total Price: $<%= order.totalPrice %></p>
+      <p>Shipping Address: <%= order.streetAddress %></p>
+    </div>
+
+    <p>Thank you for shopping with us!</p>
+  </div>
+</body>
+</html>
