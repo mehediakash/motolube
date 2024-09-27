@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   Col,
@@ -9,15 +9,19 @@ import {
   Button,
   message,
   Upload,
-  Checkbox,
+  Tag,
 } from "antd";
+import {
+  PlusOutlined,
+  LoadingOutlined,
+  UploadOutlined,
+  InboxOutlined,
+} from "@ant-design/icons";
 import { CiCirclePlus } from "react-icons/ci";
-import { InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import axios from "../Components/Axios";
 import { ImCancelCircle } from "react-icons/im";
 import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css"; // import the Quill styling
-import { PlusOutlined, LoadingOutlined } from "@ant-design/icons";
+import "react-quill/dist/quill.snow.css";
 
 const { Dragger } = Upload;
 
@@ -27,13 +31,63 @@ const UploadProduct = () => {
   const [variantFileList, setVariantFileList] = useState([]);
   const [brandFileList, setBrandFileList] = useState([]);
   const [description, setDescription] = useState("");
-  const [variants, setVariants] = useState([]); // State to manage variants
+  const [variants, setVariants] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [imagePreviewUrls, setImagePreviewUrls] = useState([]);
+  const [sizes, setSizes] = useState([]);
+  const [inputVisible, setInputVisible] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const inputRef = useRef(null);
+  const [colors, setColors] = useState([]); // Colors state for tracking
+  const [colorInputVisible, setColorInputVisible] = useState(false);
+  const [colorInputValue, setColorInputValue] = useState("");
+  const colorInputRef = useRef(null);
+
+  const handleSizeClose = (removedSize) => {
+    setSizes(sizes.filter((size) => size !== removedSize));
+  };
+
+  const showSizeInput = () => {
+    setInputVisible(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleSizeInputChange = (e) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleSizeInputConfirm = () => {
+    if (inputValue && !sizes.includes(inputValue)) {
+      setSizes([...sizes, inputValue]);
+    }
+    setInputVisible(false);
+    setInputValue("");
+  };
+
+  const handleColorClose = (removedColor) => {
+    setColors(colors.filter((color) => color !== removedColor));
+  };
+
+  const showColorInput = () => {
+    setColorInputVisible(true);
+    setTimeout(() => colorInputRef.current?.focus(), 0);
+  };
+
+  const handleColorInputChange = (e) => {
+    setColorInputValue(e.target.value);
+  };
+
+  const handleColorInputConfirm = () => {
+    if (colorInputValue && !colors.includes(colorInputValue)) {
+      setColors([...colors, colorInputValue]);
+    }
+    setColorInputVisible(false);
+    setColorInputValue("");
+  };
 
   useEffect(() => {
     fetchCategories();
@@ -99,84 +153,46 @@ const UploadProduct = () => {
     },
   };
 
-  // Handle adding a new variant
-  const handleAddVariant = () => {
-    setVariants([
-      ...variants,
-      { colorName: "", colorCode: "", details: "", options: [] },
-    ]);
-  };
-
-  // Handle adding a new option to a specific variant
-  const handleAddOption = (variantIndex) => {
-    const newVariants = [...variants];
-    newVariants[variantIndex].options.push({
-      sku: "",
-      size: "",
-      price: "",
-      stock: "",
-    });
-    setVariants(newVariants);
-  };
-
-  const handleVariantSubmit = async (values) => {
+  const handleProductSubmit = async (values) => {
     if (variantFileList.length === 0) {
       message.error("Please upload at least one variant image!");
       return;
     }
-
     const formData = new FormData();
-    formData.append("name", values.name);
-    formData.append("category", values.category);
-    formData.append("subCategory", values.subCategory);
+
+    if (values.category) formData.append("category", values.category);
+    if (values.subCategory) formData.append("subCategory", values.subCategory);
+
+    // formData.append("category", values.category);
+    // formData.append("subCategory", values.subCategory);
     formData.append("brand", values.brand);
-    formData.append("description", values.description);
+    formData.append("title", values.title);
+    formData.append("discountPrice", values.discountPrice);
+    formData.append("price", values.price);
+    formData.append("discription", values.discription);
+    formData.append("details", values.details);
+
+    sizes.forEach((size) => formData.append("size[]", size));
+    colors.forEach((color) => formData.append("color[]", color));
+
     variantFileList.forEach((file) => {
-      formData.append("photos", file);
+      formData.append("photo", file);
     });
 
     setLoading(true);
     try {
-      const response = await axios.post("/product", formData, {
+      const response = await axios.post("/product/uploadProduct", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
-
-      const productId = response.data.data.product._id;
-
-      // Create variants
-      for (const variant of variants) {
-        const variantResponse = await axios.post("/varient", {
-          colorName: variant.colorName,
-          colorCode: variant.colorCode,
-          details: variant.details,
-          product: productId,
-          category: values.category,
-          subCategory: values.subCategory,
-          brand: values.brand,
-        });
-
-        // Create options linked to the correct variant ID
-        for (const option of variant.options) {
-          await axios.post("/option", {
-            ...option,
-            product: productId,
-            variant: variantResponse.data.data.variant._id,
-            category: values.category,
-            subCategory: values.subCategory,
-            brand: values.brand,
-            freeShipping: values.freeShipping,
-          });
-        }
-      }
 
       message.success("Product created successfully");
       productForm.resetFields();
       setVariantFileList([]);
       setVariants([]);
       setDescription("");
-      setImagePreviews([]);
+      setImagePreviewUrls([]);
     } catch (error) {
       console.error("Error creating product:", error.response || error.message);
       message.error("Something went wrong, Try again!");
@@ -189,19 +205,17 @@ const UploadProduct = () => {
     fileList: variantFileList,
     multiple: true,
     onRemove: (file) => {
-      const index = variantFileList.indexOf(file); // Get the index of the file
+      const index = variantFileList.indexOf(file);
       if (index !== -1) {
-        // Remove the file from the file list
         setVariantFileList((prevList) => {
           const newFileList = [...prevList];
           newFileList.splice(index, 1);
           return newFileList;
         });
 
-        // Remove the corresponding preview from imagePreviewUrls
         setImagePreviewUrls((prevPreviews) => {
           const newPreviews = [...prevPreviews];
-          newPreviews.splice(index, 1); // Remove the preview at the same index
+          newPreviews.splice(index, 1);
           return newPreviews;
         });
       }
@@ -212,9 +226,9 @@ const UploadProduct = () => {
         message.error(`${file.name} is not an image file!`);
         return Upload.LIST_IGNORE;
       }
-      // Add the file to the file list
+
       setVariantFileList((prevList) => [...prevList, file]);
-      handleImagePreview({ originFileObj: file }); // Call preview handler for image preview
+      handleImagePreview({ originFileObj: file });
       return false;
     },
   };
@@ -227,21 +241,23 @@ const UploadProduct = () => {
 
     const formData = new FormData();
     formData.append("title", values.title);
-    formData.append("category", values.category);
-    formData.append("subCategory", values.subCategory);
+    formData.append("color", values.color);
+    formData.append("description", values.description);
     formData.append("photo", brandFileList[0]);
 
     try {
-      await axios.post("/brand", formData, {
+      await axios.post("/brand/create", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
 
       message.success("Brand created successfully");
+      setImagePreviewUrls([]);
       brandForm.resetFields();
       setBrandFileList([]);
-      fetchBrands(); // Refresh the brand list
+
+      fetchBrands();
     } catch (error) {
       message.error("Failed to create brand");
     }
@@ -267,35 +283,16 @@ const UploadProduct = () => {
               </Form.Item>
 
               <Form.Item
-                label="Select Category"
-                name="category"
+                label="Color"
+                name="color"
                 rules={[
-                  { required: true, message: "Please select a category!" },
+                  { required: true, message: "Please input the brand name!" },
                 ]}
               >
-                <Select
-                  style={{ width: "100%" }}
-                  options={categories.map((category) => ({
-                    label: category.name,
-                    value: category._id,
-                  }))}
-                />
+                <Input />
               </Form.Item>
-
-              <Form.Item
-                label="Sub Category"
-                name="subCategory"
-                rules={[
-                  { required: true, message: "Please select a sub-category!" },
-                ]}
-              >
-                <Select
-                  style={{ width: "100%" }}
-                  options={subCategories.map((subCategory) => ({
-                    label: subCategory.name,
-                    value: subCategory._id,
-                  }))}
-                />
+              <Form.Item label="Description" name="description">
+                <Input />
               </Form.Item>
               <p className="py-2">Brand Image size = 400 x 400 px</p>
               <Upload {...brandUploadProps}>
@@ -311,11 +308,10 @@ const UploadProduct = () => {
 
         <Col span={16}>
           <Card title="Add Product" bordered={false}>
-            <Form form={productForm} onFinish={handleVariantSubmit}>
-              {/* Product form fields here */}
+            <Form form={productForm} onFinish={handleProductSubmit}>
               <Form.Item
                 label="Title"
-                name="name"
+                name="title"
                 rules={[
                   {
                     required: true,
@@ -325,12 +321,7 @@ const UploadProduct = () => {
               >
                 <Input />
               </Form.Item>
-
-              <Form.Item
-                label="Product Description"
-                name="description"
-                layout="vertical"
-              >
+              <Form.Item label="Product Description" name="discription">
                 <Input />
               </Form.Item>
 
@@ -338,9 +329,6 @@ const UploadProduct = () => {
                 className="mt-14"
                 label="Select Category"
                 name="category"
-                rules={[
-                  { required: true, message: "Please select a category!" },
-                ]}
               >
                 <Select
                   style={{ width: "100%" }}
@@ -351,13 +339,7 @@ const UploadProduct = () => {
                 />
               </Form.Item>
 
-              <Form.Item
-                label="Sub Category"
-                name="subCategory"
-                rules={[
-                  { required: true, message: "Please select a sub-category!" },
-                ]}
-              >
+              <Form.Item label="Sub Category" name="subCategory">
                 <Select
                   style={{ width: "100%" }}
                   options={subCategories.map((subCategory) => ({
@@ -367,11 +349,7 @@ const UploadProduct = () => {
                 />
               </Form.Item>
 
-              <Form.Item
-                label="Brand"
-                name="brand"
-                rules={[{ required: true, message: "Please select a brand!" }]}
-              >
+              <Form.Item label="Brand" name="brand">
                 <Select
                   style={{ width: "100%" }}
                   options={brands.map((brand) => ({
@@ -381,7 +359,81 @@ const UploadProduct = () => {
                 />
               </Form.Item>
 
-              <Form.Item label="Details">
+              <div className="flex gap-x-2">
+                <div className="flex gap-x-5 items-center">
+                  <Form.Item className="w-[95px]" label="price" name="price">
+                    <Input />
+                  </Form.Item>
+                  <Form.Item
+                    className="w-[150px]"
+                    label="Discount Price"
+                    name="discountPrice"
+                  >
+                    <Input />
+                  </Form.Item>
+                </div>
+                <Form.Item className="flex" label="Product Size" name="size">
+                  {sizes.map((size) => (
+                    <Tag
+                      key={size}
+                      closable
+                      onClose={() => handleSizeClose(size)}
+                    >
+                      {size}
+                    </Tag>
+                  ))}
+
+                  {inputVisible ? (
+                    <Input
+                      ref={inputRef}
+                      type="text"
+                      size="small"
+                      value={inputValue}
+                      onChange={handleSizeInputChange}
+                      onBlur={handleSizeInputConfirm}
+                      onPressEnter={handleSizeInputConfirm}
+                    />
+                  ) : (
+                    <Tag onClick={showSizeInput} className="tag-add">
+                      <PlusOutlined /> New Size
+                    </Tag>
+                  )}
+                </Form.Item>
+
+                <Form.Item
+                  className=" !flex"
+                  label="Product Color"
+                  name="color"
+                >
+                  {colors.map((color) => (
+                    <Tag
+                      key={color}
+                      closable
+                      onClose={() => handleColorClose(color)}
+                    >
+                      {color}
+                    </Tag>
+                  ))}
+
+                  {colorInputVisible ? (
+                    <Input
+                      ref={colorInputRef}
+                      type="text"
+                      size="small"
+                      value={colorInputValue}
+                      onChange={handleColorInputChange}
+                      onBlur={handleColorInputConfirm}
+                      onPressEnter={handleColorInputConfirm}
+                    />
+                  ) : (
+                    <Tag onClick={showColorInput} className="tag-add">
+                      <PlusOutlined /> Add Color
+                    </Tag>
+                  )}
+                </Form.Item>
+              </div>
+
+              <Form.Item label="Details" name="details">
                 <ReactQuill />
               </Form.Item>
               <Dragger {...variantUploadProps} onChange={handleImagePreview}>
@@ -396,9 +448,7 @@ const UploadProduct = () => {
                 </p>
               </Dragger>
 
-              <div className="flex gap-x-5 justify-center">
-                {/* i want to show here preview image  */}
-
+              <div className="flex gap-x-5 justify-center mt-10">
                 {imagePreviewUrls.map((url, index) => (
                   <img
                     key={index}

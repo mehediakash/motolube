@@ -11,7 +11,7 @@ async function createBrand(req, res) {
         }
 
         try {
-            const { title, description } = req.body;
+            const { title, description ,color} = req.body;
             const photoPath = req.file ? req.file.path : null; // Handling single file upload
 
             if (!photoPath) {
@@ -21,6 +21,7 @@ async function createBrand(req, res) {
             const newBrand = new Brand({
                 photo: photoPath, // Store the uploaded photo path
                 title,
+                color,
                 description
             });
             

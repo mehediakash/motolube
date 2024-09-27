@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Card,
   Col,
@@ -9,57 +9,120 @@ import {
   Button,
   message,
   Upload,
-  Checkbox,
+  Tag,
 } from "antd";
-import ReactQuill from "react-quill";
-import { CiCirclePlus } from "react-icons/ci";
-import "react-quill/dist/quill.snow.css";
-import { InboxOutlined, UploadOutlined } from "@ant-design/icons";
+import {
+  PlusOutlined,
+  LoadingOutlined,
+  UploadOutlined,
+  InboxOutlined,
+} from "@ant-design/icons";
 import axios from "../Components/Axios";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
 
 const { Dragger } = Upload;
 
 const UploadProduct = () => {
-  const [brandForm] = Form.useForm();
-  const [variantForm] = Form.useForm();
-  const [categories, setCategories] = useState([]);
-  const [subCategories, setSubCategories] = useState([]);
-  const [brands, setBrands] = useState([]);
-  const [brandFileList, setBrandFileList] = useState([]);
+  const [productForm] = Form.useForm();
   const [variantFileList, setVariantFileList] = useState([]);
   const [description, setDescription] = useState("");
+  const [imagePreviewUrls, setImagePreviewUrls] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [brandForm] = Form.useForm();
+  const [brandFileList, setBrandFileList] = useState([]);
 
-  useEffect(() => {
-    fetchCategories();
-    fetchSubCategories();
-    fetchBrands();
-  }, []);
+  // State to manage tags for product size and color
+  const [sizes, setSizes] = useState([]);
+  const [inputVisible, setInputVisible] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const inputRef = useRef(null);
 
-  const fetchCategories = async () => {
-    try {
-      const response = await axios.get("/category");
-      setCategories(response.data.data.doc);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
+  const [colors, setColors] = useState([]);
+  const [colorInputVisible, setColorInputVisible] = useState(false);
+  const [colorInputValue, setColorInputValue] = useState("");
+  const colorInputRef = useRef(null);
+
+  const handleSizeClose = (removedSize) => {
+    setSizes(sizes.filter((size) => size !== removedSize));
+  };
+
+  const showSizeInput = () => {
+    setInputVisible(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleSizeInputChange = (e) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleSizeInputConfirm = () => {
+    if (inputValue && !sizes.includes(inputValue)) {
+      setSizes([...sizes, inputValue]);
+    }
+    setInputVisible(false);
+    setInputValue("");
+  };
+
+  const handleColorClose = (removedColor) => {
+    setColors(colors.filter((color) => color !== removedColor));
+  };
+
+  const showColorInput = () => {
+    setColorInputVisible(true);
+    setTimeout(() => colorInputRef.current?.focus(), 0);
+  };
+
+  const handleColorInputChange = (e) => {
+    setColorInputValue(e.target.value);
+  };
+
+  const handleColorInputConfirm = () => {
+    if (colorInputValue && !colors.includes(colorInputValue)) {
+      setColors([...colors, colorInputValue]);
+    }
+    setColorInputVisible(false);
+    setColorInputValue("");
+  };
+
+  const handleImagePreview = (file) => {
+    if (file && file.originFileObj) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreviewUrls((prev) => [...prev, e.target.result]);
+      };
+      reader.readAsDataURL(file.originFileObj);
     }
   };
 
-  const fetchSubCategories = async () => {
-    try {
-      const response = await axios.get("/subCategory");
-      setSubCategories(response.data.data.doc);
-    } catch (error) {
-      console.error("Error fetching subcategories:", error);
-    }
-  };
-
-  const fetchBrands = async () => {
-    try {
-      const response = await axios.get("/brand");
-      setBrands(response.data.data.doc);
-    } catch (error) {
-      console.error("Error fetching brands:", error);
-    }
+  const variantUploadProps = {
+    fileList: variantFileList,
+    multiple: true,
+    onRemove: (file) => {
+      const index = variantFileList.indexOf(file);
+      if (index !== -1) {
+        setVariantFileList((prevList) => {
+          const newFileList = [...prevList];
+          newFileList.splice(index, 1);
+          return newFileList;
+        });
+        setImagePreviewUrls((prevPreviews) => {
+          const newPreviews = [...prevPreviews];
+          newPreviews.splice(index, 1);
+          return newPreviews;
+        });
+      }
+    },
+    beforeUpload: (file) => {
+      const isImage = file.type.startsWith("image/");
+      if (!isImage) {
+        message.error(`${file.name} is not an image file!`);
+        return Upload.LIST_IGNORE;
+      }
+      setVariantFileList((prevList) => [...prevList, file]);
+      handleImagePreview({ originFileObj: file });
+      return false;
+    },
   };
 
   const handleBrandSubmit = async (values) => {
@@ -70,12 +133,12 @@ const UploadProduct = () => {
 
     const formData = new FormData();
     formData.append("title", values.title);
-    formData.append("category", values.category);
-    formData.append("subCategory", values.subCategory);
+    formData.append("description", values.description);
+    formData.append("color", values.color);
     formData.append("photo", brandFileList[0]);
 
     try {
-      await axios.post("/brand", formData, {
+      await axios.post("/brand/create", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
@@ -84,12 +147,11 @@ const UploadProduct = () => {
       message.success("Brand created successfully");
       brandForm.resetFields();
       setBrandFileList([]);
-      fetchBrands(); // Refresh the brand list
+      fetchBrands();
     } catch (error) {
       message.error("Failed to create brand");
     }
   };
-
   const handleVariantSubmit = async (values) => {
     if (variantFileList.length === 0) {
       message.error("Please upload at least one variant image!");
@@ -97,39 +159,38 @@ const UploadProduct = () => {
     }
 
     const formData = new FormData();
-    formData.append("name", values.name);
+    formData.append("title", values.title);
     formData.append("category", values.category);
     formData.append("subCategory", values.subCategory);
-    variantFileList.forEach((file) => {
-      formData.append("photos", file);
-    });
     formData.append("brand", values.brand);
-    formData.append("description", values.description);
+    formData.append("discription", values.discription);
+    formData.append("details", values.details);
+    formData.append("color", values.color);
+    variantFileList.forEach((file) => {
+      formData.append("photo", file);
+    });
 
+    setLoading(true);
     try {
-      const response = await axios.post("/product", formData, {
+      const response = await axios.post("/product/uploadProduct", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
-      0;
-      message.success("Variant created successfully");
-      variantForm.resetFields();
+      console.log(response);
+      message.success("Product created successfully");
+      productForm.resetFields();
       setVariantFileList([]);
-      setDescription(""); // Reset description
+      setVariants([]);
+      setDescription("");
+      setImagePreviews([]);
     } catch (error) {
-      console.error("Error creating variant:", error.response || error.message);
-
-      if (error.response) {
-        message.error(
-          `Error: ${error.response.data.message || "Something went wrong!"}`
-        );
-      } else {
-        message.error("Something went wrong, Try again!");
-      }
+      console.error("Error creating product:", error.response || error.message);
+      message.error("Something went wrong, Try again!");
+    } finally {
+      setLoading(false);
     }
   };
-
   const brandUploadProps = {
     fileList: brandFileList,
     onRemove: (file) => {
@@ -145,52 +206,6 @@ const UploadProduct = () => {
       return false;
     },
   };
-
-  const variantUploadProps = {
-    fileList: variantFileList,
-    multiple: true, // Allow multiple files
-    onRemove: (file) => {
-      setVariantFileList((prevList) => {
-        const index = prevList.indexOf(file);
-        const newFileList = prevList.slice();
-        newFileList.splice(index, 1);
-        return newFileList;
-      });
-    },
-    beforeUpload: (file) => {
-      setVariantFileList((prevList) => [...prevList, file]);
-      return false;
-    },
-  };
-
-  const quillModules = {
-    toolbar: [
-      [{ header: [1, 2, false] }],
-      ["bold", "italic", "underline", "strike", "blockquote"],
-      [
-        { list: "ordered" },
-        { list: "bullet" },
-        { indent: "-1" },
-        { indent: "+1" },
-      ],
-      ["link", "image"],
-      ["clean"],
-    ],
-  };
-
-  const quillFormats = [
-    "header",
-    "bold",
-    "italic",
-    "underline",
-    "strike",
-    "blockquote",
-    "list",
-    "bullet",
-    "indent",
-    "link",
-    "image",
-  ];
 
   return (
     <>
@@ -212,37 +227,18 @@ const UploadProduct = () => {
               </Form.Item>
 
               <Form.Item
-                label="Select Category"
-                name="category"
+                label="Color"
+                name="color"
                 rules={[
-                  { required: true, message: "Please select a category!" },
+                  { required: true, message: "Please input the brand name!" },
                 ]}
               >
-                <Select
-                  style={{ width: "100%" }}
-                  options={categories.map((category) => ({
-                    label: category.title,
-                    value: category._id,
-                  }))}
-                />
+                <Input />
               </Form.Item>
-
-              <Form.Item
-                label="Sub Category"
-                name="subCategory"
-                rules={[
-                  { required: true, message: "Please select a sub-category!" },
-                ]}
-              >
-                <Select
-                  style={{ width: "100%" }}
-                  options={subCategories.map((subCategory) => ({
-                    label: subCategory.title,
-                    value: subCategory._id,
-                  }))}
-                />
+              <Form.Item label="Description" name="description">
+                <Input />
               </Form.Item>
-
+              <p className="py-2">Brand Image size = 400 x 400 px</p>
               <Upload {...brandUploadProps}>
                 <Button icon={<UploadOutlined />}>Select Brand Image</Button>
               </Upload>
@@ -253,67 +249,51 @@ const UploadProduct = () => {
             </Form>
           </Card>
         </Col>
-
-        {/* ===================Product section ======================*/}
-
         <Col span={16}>
           <Card title="Add Product" bordered={false}>
-            <Form form={variantForm} onFinish={handleVariantSubmit}>
+            <Form form={productForm} onFinish={handleVariantSubmit}>
               <Form.Item
                 label="Title"
                 name="name"
                 rules={[
                   {
                     required: true,
-                    message: "Please input the variant title!",
+                    message: "Please input the product title!",
                   },
                 ]}
               >
                 <Input />
               </Form.Item>
-              <Form.Item
-                label="Product Description"
-                name="description"
-                layout="vertical"
-              >
+
+              <Form.Item label="Product Description" name="discription">
                 <Input />
               </Form.Item>
+
               <Form.Item
                 className="mt-14"
                 label="Select Category"
                 name="category"
-                rules={[
-                  { required: true, message: "Please select a category!" },
-                ]}
               >
                 <Select
                   style={{ width: "100%" }}
                   options={categories.map((category) => ({
-                    label: category.title,
+                    label: category.name,
                     value: category._id,
                   }))}
                 />
               </Form.Item>
-              <Form.Item
-                label="Sub Category"
-                name="subCategory"
-                rules={[
-                  { required: true, message: "Please select a sub-category!" },
-                ]}
-              >
+
+              <Form.Item label="Sub Category" name="subCategory">
                 <Select
                   style={{ width: "100%" }}
                   options={subCategories.map((subCategory) => ({
-                    label: subCategory.title,
+                    label: subCategory.name,
                     value: subCategory._id,
                   }))}
                 />
               </Form.Item>
-              <Form.Item
-                label="Brand"
-                name="brand"
-                rules={[{ required: true, message: "Please select a brand!" }]}
-              >
+
+              <Form.Item label="Brand" name="brand">
                 <Select
                   style={{ width: "100%" }}
                   options={brands.map((brand) => ({
@@ -322,45 +302,103 @@ const UploadProduct = () => {
                   }))}
                 />
               </Form.Item>
-              {/* Add varient */}
-              <div className="border p-3 rounded-md">
-                <h2 className="mb-3 font-medium ">Variants</h2>
-                <div className="flex items-center gap-x-2 cursor-pointer">
-                  <CiCirclePlus size={25} />
-                  <p>add options like color Name, color Code or details </p>
-                </div>
+
+              <Form.Item label="Details">
+                <ReactQuill />
+              </Form.Item>
+              <div className="flex">
+                <Form.Item className="flex" label="Product Size" name="size">
+                  {sizes.map((size) => (
+                    <Tag
+                      key={size}
+                      closable
+                      onClose={() => handleSizeClose(size)}
+                    >
+                      {size}
+                    </Tag>
+                  ))}
+
+                  {inputVisible ? (
+                    <Input
+                      ref={inputRef}
+                      type="text"
+                      size="small"
+                      value={inputValue}
+                      onChange={handleSizeInputChange}
+                      onBlur={handleSizeInputConfirm}
+                      onPressEnter={handleSizeInputConfirm}
+                    />
+                  ) : (
+                    <Tag onClick={showSizeInput} className="tag-add">
+                      <PlusOutlined /> New Size
+                    </Tag>
+                  )}
+                </Form.Item>
+
+                <Form.Item
+                  className=" !flex"
+                  label="Product Color"
+                  name="color"
+                >
+                  {colors.map((color) => (
+                    <Tag
+                      key={color}
+                      closable
+                      onClose={() => handleColorClose(color)}
+                    >
+                      {color}
+                    </Tag>
+                  ))}
+
+                  {colorInputVisible ? (
+                    <Input
+                      ref={colorInputRef}
+                      type="text"
+                      size="small"
+                      value={colorInputValue}
+                      onChange={handleColorInputChange}
+                      onBlur={handleColorInputConfirm}
+                      onPressEnter={handleColorInputConfirm}
+                    />
+                  ) : (
+                    <Tag onClick={showColorInput} className="tag-add">
+                      <PlusOutlined /> Add Color
+                    </Tag>
+                  )}
+                </Form.Item>
               </div>
-              {/* Add option */}
-              <div className="border p-3 rounded-md mt-10">
-                <h2 className="mb-3 font-medium ">option</h2>
-                <div className="flex items-center gap-x-2 cursor-pointer">
-                  <CiCirclePlus size={25} />
-                  <p>add options like sku, size, price, stock </p>
-                </div>
+              <Form.Item label="Details">
+                <ReactQuill />
+              </Form.Item>
+
+              <Dragger {...variantUploadProps}>
+                <p className="ant-upload-drag-icon">
+                  <InboxOutlined />
+                </p>
+                <p className="ant-upload-text">
+                  Click or drag file to this area to upload
+                </p>
+                <p className="ant-upload-hint">
+                  Support for a single or bulk upload.
+                </p>
+              </Dragger>
+
+              <div className="flex gap-x-5 justify-center mt-5">
+                {imagePreviewUrls.map((url, index) => (
+                  <img
+                    key={index}
+                    src={url}
+                    alt="Preview"
+                    className="w-[150px] h-[150px] object-cover rounded-md shadow-lg"
+                  />
+                ))}
               </div>
-              <div className="mt-10">
-                <Dragger {...variantUploadProps}>
-                  <p className="ant-upload-drag-icon">
-                    <InboxOutlined />
-                  </p>
-                  <p className="ant-upload-text">
-                    Click or drag file to this area to upload
-                  </p>
-                  <p className="ant-upload-hint">
-                    Support for a single or bulk upload. Strictly prohibit from
-                    uploading company data or other band files
-                  </p>
-                </Dragger>
-              </div>
-              <Button
-                type="primary"
-                htmlType="submit"
-                className="my-4"
-                size="large"
-                block
-              >
-                Save
-              </Button>
+
+              <Form.Item>
+                <Button type="primary" htmlType="submit" disabled={loading}>
+                  {loading ? <LoadingOutlined /> : "Upload Product"}
+                </Button>
+              </Form.Item>
             </Form>
           </Card>
         </Col>

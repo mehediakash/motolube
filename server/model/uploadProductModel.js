@@ -22,12 +22,16 @@ const uploadProduct = new Schema({
         type: String,
         require: [true, "discription is require"]
     },
-    color:{
-        type:Array
-    },
-    size: {
-        type: Array
-    },
+    color:[
+        {
+          type: String,
+        }
+      ],
+    size: [
+        {
+          type: String,
+        }
+      ],
     photo:[{
         type:String
     }]
@@ -44,6 +48,7 @@ const uploadProduct = new Schema({
         type: Schema.Types.ObjectId,
         ref:"Brand",
     }
+    
     
 })
 

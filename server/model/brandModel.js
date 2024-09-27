@@ -2,11 +2,18 @@ const mongoose = require("mongoose")
 const {Schema} = mongoose
 
 const brand = new Schema({
-    photo: [{
+    photo: {
         type: String, // Make photo an array of strings
-      }],
+      },
     title:{
-        type:String
+        type:String,
+        unique: true,
+        required: [true, "title is required"],
+        
+    },
+    color:{
+        type: String,
+        required: [true, "color is required"],
     },
     description:{
         type: String

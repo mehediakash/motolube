@@ -1,485 +1,240 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import { Table, Button, Modal, Form, Input, Tag, Upload, message } from "antd";
 import {
-  Popconfirm,
-  Table,
-  Modal,
-  Form,
-  Input,
-  Select,
-  Button,
-  message,
-  Upload,
-} from "antd";
-import axios from "../Components/Axios";
+  EditOutlined,
+  DeleteOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css"; // import Quill styling
-import { UploadOutlined, DeleteOutlined } from "@ant-design/icons";
+import "react-quill/dist/quill.snow.css";
+import axios from "../Components/Axios";
 
 const AllProduct = () => {
-  const [data, setData] = useState([]);
-  const [editingRecord, setEditingRecord] = useState(null);
-  const [editForm] = Form.useForm();
-  const [categories, setCategories] = useState([]);
-  const [subCategories, setSubCategories] = useState([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [productProduct, setProductProduct] = useState({});
-  const [productVariant, setProductVariant] = useState({});
-  const [productOptions, setProductOptions] = useState([]);
-  const [imagePreviews, setImagePreviews] = useState([]);
-  const [fileList, setFileList] = useState([]);
-
-  const fetchData = async () => {
-    try {
-      const response = await axios.get("/varient");
-      const formattedData = response.data.data.doc.map((variant, index) => ({
-        ...variant,
-        key: variant._id,
-        index: index + 1,
-        title: variant.title,
-        category: variant?.category?.title || "N/A",
-        subCategory: variant?.subCategory?.title || "N/A",
-        photo: variant.photo,
-      }));
-      setData(formattedData.reverse());
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      const response = await axios.get("/category");
-      setCategories(response.data.data.doc);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-    }
-  };
-
-  const fetchSubCategories = async () => {
-    try {
-      const response = await axios.get("/subCategory");
-      setSubCategories(response.data.data.doc);
-    } catch (error) {
-      console.error("Error fetching subcategories:", error);
-    }
-  };
+  const [products, setProducts] = useState([]);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [form] = Form.useForm();
 
   useEffect(() => {
-    fetchData();
-    fetchCategories();
-    fetchSubCategories();
+    fetchProducts();
   }, []);
 
-  const handleDelete = async (key) => {
+  const fetchProducts = async () => {
     try {
-      await axios.delete(`/varient/${key}`);
-      message.success("Variant deleted successfully");
-      setData((prevData) => prevData.filter((item) => item.key !== key));
+      const { data } = await axios.get("/product/allproduct");
+      setProducts(data.data);
     } catch (error) {
-      message.error("Failed to delete variant");
+      message.error("Failed to fetch products");
     }
   };
 
-  const handleEdit = async (record) => {
+  const handleEdit = (product) => {
+    setEditingProduct(product);
+    form.setFieldsValue({
+      ...product,
+      details: product.details.replace(/<\/?[^>]+(>|$)/g, ""), // Clean HTML tags
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (id) => {
     try {
-      const productResponse = await axios.get(`/product/${record.product._id}`);
-      const product = productResponse.data.data.doc;
-
-      const variantResponse = await axios.get(`/varient/${record._id}`);
-      const variant = variantResponse.data.data.doc;
-
-      setEditingRecord(record);
-      editForm.setFieldsValue({
-        title: product.name,
-        category: product.category._id,
-        subCategory: product.subCategory?._id || null,
-        description: product.description,
-        colorName: variant.colorName,
-        colorCode: variant.colorCode,
-      });
-
-      setProductProduct(product);
-      setProductVariant(variant);
-      setImagePreviews(product.photos || []); // Set existing images as previews
-      setProductOptions(variant.options || []); // Ensure it's an array
-      setIsModalVisible(true);
-      setFileList([]); // Reset file list for new uploads
+      await axios.delete(`/product/deleteProduct/${id}`);
+      message.success("Product deleted successfully");
+      fetchProducts();
     } catch (error) {
-      console.error("Error fetching data:", error);
-      message.error("Failed to fetch variant data.");
+      message.error("Failed to delete product");
     }
   };
-  const handleDeletePreviewImage = (imageIndex) => {
-    setImagePreviews((prevImages) =>
-      prevImages.filter((_, index) => index !== imageIndex)
-    );
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setEditingProduct(null);
+    form.resetFields();
   };
 
-  const handleModalOk = async () => {
+  const handleFinish = async (values) => {
     try {
-      const values = await editForm.validateFields();
+      // Prepare data to send to the backend
+      const updatedProduct = {
+        ...editingProduct,
+        ...values,
+        category: editingProduct.category._id || editingProduct.category,
+        subCategory:
+          editingProduct.subCategory._id || editingProduct.subCategory,
+      };
+
       const formData = new FormData();
+      for (let key in updatedProduct) {
+        formData.append(key, updatedProduct[key]);
+      }
 
-      formData.append("name", values.title);
-      formData.append("category", values.category);
-      formData.append("subCategory", values.subCategory);
-      formData.append("description", values.description);
-
-      // Append existing images first
-      imagePreviews.forEach((image) => {
-        formData.append("photos", image);
+      // Append new photos if any
+      const files = editingProduct.newPhotos || [];
+      files.forEach((file) => {
+        formData.append("photos", file);
       });
 
-      // Append new images
-      fileList.forEach((file) => {
-        formData.append("photos", file.originFileObj);
+      await axios.put(`/product/editProduct/${editingProduct._id}`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
 
-      await axios.patch(`/varient/${productVariant._id}`, {
-        colorName: values.colorName,
-        colorCode: values.colorCode,
-      });
-
-      // Ensure values for price, quantity, sku, and size are arrays and have the same length as productOptions
-      const updatedOptions = productOptions.map((option, index) => ({
-        price: values.price?.[index] || option.price, // Default to existing value
-        stock: values.quantity?.[index] || option.stock,
-        sku: values.sku?.[index] || option.sku,
-        size: values.size?.[index] || option.size,
-      }));
-
-      // Update each option
-      await Promise.all(
-        updatedOptions.map((option, index) => {
-          return axios.patch(`/option/${productOptions[index]._id}`, option);
-        })
-      );
-
-      const productResponse = await axios.patch(
-        `/product/${productProduct._id}`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
-
-      const updatedProduct = productResponse.data.data.doc;
-
-      setData((prevData) =>
-        prevData.map((item) =>
-          item.key === editingRecord._id
-            ? {
-                ...item,
-                ...values,
-                category:
-                  categories.find((cat) => cat._id === values.category)
-                    ?.title || "N/A",
-                subCategory:
-                  subCategories.find(
-                    (subCat) => subCat._id === values.subCategory
-                  )?.title || "N/A",
-                photo: updatedProduct?.photos,
-              }
-            : item
-        )
-      );
-
-      message.success("Variant updated successfully");
-      setEditingRecord(null);
-      setIsModalVisible(false);
-      fetchData();
+      message.success("Product updated successfully");
+      fetchProducts();
+      handleModalClose();
     } catch (error) {
-      console.error("Failed to update variant", error);
-      message.error("Failed to update variant");
+      message.error("Failed to update product");
+      console.error(error);
     }
   };
 
-  const handleModalCancel = () => {
-    setEditingRecord(null);
-    setIsModalVisible(false);
+  const handlePhotoUpload = ({ file }) => {
+    // Update the editingProduct state with the new photo
+    setEditingProduct((prev) => ({
+      ...prev,
+      newPhotos: [...(prev.newPhotos || []), file], // Keep track of new photos
+    }));
   };
 
-  const handleImageUpload = ({ fileList }) => {
-    setFileList(fileList);
+  const handlePhotoRemove = (index) => {
+    const updatedPhotos = [...editingProduct.newPhotos];
+    updatedPhotos.splice(index, 1); // Remove the photo from newPhotos
+    setEditingProduct({
+      ...editingProduct,
+      newPhotos: updatedPhotos,
+    });
   };
 
   const columns = [
     {
-      title: "#SL",
-      dataIndex: "index",
-      key: "index",
-      fixed: "left",
-      width: "5%",
-    },
-    {
-      width: "8%",
-      title: "Category",
-      dataIndex: "category",
-      key: "category",
-    },
-    {
-      width: "8%",
-      title: "Sub Category",
-      dataIndex: "subCategory",
-      key: "subCategory",
-    },
-    {
-      width: "10%",
-      title: "Title",
-      dataIndex: ["product", "name"],
-      key: "title",
-    },
-    {
-      width: "15%",
-      title: "Stock",
-      dataIndex: "options",
-      key: "quantity",
-      render: (options) => (
-        <>
-          {options?.map((option, index) => (
-            <div key={index}>
-              <span>{`Stock: ${option.stock} = Size: (${option.size})`}</span>
-            </div>
-          ))}
-        </>
-      ),
-    },
-    {
-      width: "10%",
-      title: "Images",
-      dataIndex: ["product", "photos"],
-      key: "photos",
+      title: "Photo",
+      dataIndex: "photo",
       render: (photos) => (
         <>
-          {photos?.map((url, index) => (
+          {photos.map((photo, index) => (
             <img
               key={index}
-              src={url}
-              alt={`Image ${index + 1}`}
-              style={{ width: "50px", height: "50px", objectFit: "cover" }}
+              src={`http://localhost:8000/${photo}`}
+              alt="Product"
+              className="w-16 h-16 object-cover"
             />
           ))}
         </>
       ),
     },
+    { title: "Title", dataIndex: "title" },
+    { title: "Price", dataIndex: "price" },
+    { title: "Discount Price", dataIndex: "discountPrice" },
     {
-      width: "5%",
+      title: "Color",
+      dataIndex: "color",
+      render: (colors) => colors.map((color) => <Tag key={color}>{color}</Tag>),
+    },
+    {
       title: "Size",
-      dataIndex: "options",
-      key: "size",
-      render: (options) => (
+      dataIndex: "size",
+      render: (sizes) => sizes.map((size) => <Tag key={size}>{size}</Tag>),
+    },
+    { title: "Category", dataIndex: ["category", "name"] },
+    { title: "SubCategory", dataIndex: ["subCategory", "name"] },
+    { title: "Brand", dataIndex: ["brand", "title"] },
+    {
+      title: "Actions",
+      render: (product) => (
         <>
-          {options?.map((option, index) => (
-            <div key={index}>
-              <span>{option.size}</span>
-            </div>
-          ))}
-        </>
-      ),
-    },
-    {
-      width: "5%",
-      title: "Color Name", // New column for color name
-      dataIndex: "colorName",
-      key: "colorName",
-      render: (colorName) => <span>{colorName}</span>,
-    },
-    {
-      title: "Price",
-      dataIndex: "options",
-      key: "price",
-      render: (options) => (
-        <>
-          {Array.isArray(options) &&
-            options.map((option, index) => (
-              <div key={index}>
-                Price:{`${option.price} TK size: (${option.size})`}
-              </div>
-            ))}
-        </>
-      ),
-    },
-    {
-      title: "Discount",
-      dataIndex: "options",
-      key: "discount",
-      render: (options) => (
-        <>
-          {options?.map((option, index) => (
-            <div key={index}>
-              <span> {option.discountValue}</span>
-            </div>
-          ))}
-        </>
-      ),
-    },
-
-    {
-      title: "Action",
-      key: "action",
-      fixed: "right",
-      width: "10%",
-      render: (_, record) => (
-        <div className="flex gap-x-2">
-          <Button type="primary" onClick={() => handleEdit(record)}>
+          <Button
+            icon={<EditOutlined />}
+            className="mr-2"
+            onClick={() => handleEdit(product)}
+          >
             Edit
           </Button>
-          <Popconfirm
-            title="Are you sure to delete this variant?"
-            onConfirm={() => handleDelete(record._id)}
-            okText="Yes"
-            cancelText="No"
+          <Button
+            icon={<DeleteOutlined />}
+            danger
+            onClick={() => handleDelete(product._id)}
           >
-            <Button type="danger">Delete</Button>
-          </Popconfirm>
-        </div>
+            Delete
+          </Button>
+        </>
       ),
     },
   ];
 
-  const handleOptionChange = (index, field, value) => {
-    setProductOptions((prevOptions) => {
-      const updatedOptions = [...prevOptions];
-      updatedOptions[index] = {
-        ...updatedOptions[index],
-        [field]: value,
-      };
-      return updatedOptions;
-    });
-  };
-
   return (
-    <div>
-      <Table columns={columns} dataSource={data} scroll={{ x: 1300 }} />
+    <>
+      <Table columns={columns} dataSource={products} rowKey="_id" />
+
       <Modal
         title="Edit Product"
-        visible={isModalVisible}
-        onOk={handleModalOk}
-        onCancel={handleModalCancel}
-        footer={[
-          <Button key="cancel" onClick={handleModalCancel}>
-            Cancel
-          </Button>,
-          <Button key="submit" type="primary" onClick={handleModalOk}>
-            Submit
-          </Button>,
-        ]}
+        open={isModalOpen}
+        onCancel={handleModalClose}
+        footer={null}
       >
-        <Form form={editForm} layout="vertical">
-          <Form.Item label="Title" name="title">
+        <Form form={form} layout="vertical" onFinish={handleFinish}>
+          <Form.Item name="title" label="Title" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Category" name="category">
-            <Select>
-              {categories.map((cat) => (
-                <Select.Option key={cat._id} value={cat._id}>
-                  {cat.title}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item label="Sub Category" name="subCategory">
-            <Select>
-              {subCategories.map((sub) => (
-                <Select.Option key={sub._id} value={sub._id}>
-                  {sub.title}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item label="Description" name="description">
+          <Form.Item name="details" label="Details">
             <ReactQuill />
           </Form.Item>
-          <Form.Item label="Color Name" name="colorName">
+          <Form.Item name="price" label="Price" rules={[{ required: true }]}>
+            <Input type="number" />
+          </Form.Item>
+          <Form.Item
+            name="discountPrice"
+            label="Discount Price"
+            rules={[{ required: true }]}
+          >
+            <Input type="number" />
+          </Form.Item>
+          <Form.Item name="discription" label="Description">
+            <Input.TextArea />
+          </Form.Item>
+          <Form.Item name="color" label="Color">
             <Input />
           </Form.Item>
-          <Form.Item label="Color Code" name="colorCode">
+          <Form.Item name="size" label="Size">
             <Input />
           </Form.Item>
-          <div>
-            <h1 className="text-xl font-bold">Options</h1>
-            {productOptions.map((option, index) => (
-              <div key={index} className="border-b border-black mb-5 list-item">
-                <Form.Item label={`Price for Option ${index + 1}`}>
-                  <Input
-                    value={option.price}
-                    onChange={(e) =>
-                      handleOptionChange(index, "price", e.target.value)
-                    }
-                  />
-                </Form.Item>
-                <Form.Item label={`Quantity for Option ${index + 1}`}>
-                  <Input
-                    value={option.stock}
-                    onChange={(e) =>
-                      handleOptionChange(index, "stock", e.target.value)
-                    }
-                  />
-                </Form.Item>
-                <Form.Item label={`SKU for Option ${index + 1}`}>
-                  <Input
-                    value={option.sku}
-                    onChange={(e) =>
-                      handleOptionChange(index, "sku", e.target.value)
-                    }
-                  />
-                </Form.Item>
-                <Form.Item label={`Size for Option ${index + 1}`}>
-                  <Input
-                    value={option.size}
-                    onChange={(e) =>
-                      handleOptionChange(index, "size", e.target.value)
-                    }
-                  />
-                </Form.Item>
-              </div>
-            ))}
-          </div>
-          <div>
-            <h3>Current Images</h3>
-            {imagePreviews.map((image, index) => (
-              <div
-                key={index}
-                style={{
-                  position: "relative",
-                  display: "inline-block",
-                  marginRight: 8,
-                }}
-              >
+
+          <div className="mb-4">
+            <Upload
+              listType="picture"
+              beforeUpload={() => false}
+              onChange={handlePhotoUpload}
+              multiple
+            >
+              <Button icon={<UploadOutlined />}>Upload Photo</Button>
+            </Upload>
+            {editingProduct?.newPhotos?.map((file, index) => (
+              <div key={index} className="relative mt-2">
                 <img
-                  src={image}
-                  alt={`Image ${index}`}
-                  style={{
-                    width: "100px",
-                    height: "100px",
-                    objectFit: "cover",
-                  }}
+                  src={URL.createObjectURL(file)} // Create a local URL for the uploaded image
+                  alt="Product"
+                  className="w-16 h-16"
                 />
                 <Button
-                  icon={<DeleteOutlined />}
-                  onClick={() => handleDeletePreviewImage(index)}
-                  style={{ position: "absolute", top: 0, right: 0 }}
-                />
+                  danger
+                  onClick={() => handlePhotoRemove(index)}
+                  className="absolute top-0 right-0"
+                >
+                  Remove
+                </Button>
               </div>
             ))}
           </div>
 
-          <Form.Item label="Upload New Images">
-            <Upload
-              listType="picture"
-              fileList={fileList}
-              onChange={handleImageUpload}
-              beforeUpload={() => false} // Prevent automatic upload
-              multiple
-            >
-              <Button icon={<UploadOutlined />}>Upload</Button>
-            </Upload>
+          <Form.Item>
+            <Button type="primary" htmlType="submit">
+              Save
+            </Button>
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </>
   );
 };
 
