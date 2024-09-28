@@ -1,18 +1,31 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Table, Button, Modal, Form, Input, Tag, Upload, message } from "antd";
 import {
   EditOutlined,
   DeleteOutlined,
   UploadOutlined,
+  CloseCircleOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
-import axios from "../Components/Axios";
+import axios from "../Components/Axios"; // Adjust the path as per your folder structure
 
 const AllProduct = () => {
+  const [sizes, setSizes] = useState([]);
+  const [inputVisible, setInputVisible] = useState(false);
+  const [inputValue, setInputValue] = useState(""); // Added inputValue state
+  const inputRef = useRef(null);
+
+  const [colors, setColors] = useState([]);
+  const [colorInputVisible, setColorInputVisible] = useState(false);
+  const [colorInputValue, setColorInputValue] = useState("");
+  const colorInputRef = useRef(null);
+
   const [products, setProducts] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [removedPhotos, setRemovedPhotos] = useState([]);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -28,12 +41,57 @@ const AllProduct = () => {
     }
   };
 
+  const handleSizeClose = (removedSize) => {
+    setSizes(sizes.filter((size) => size !== removedSize));
+  };
+
+  const showSizeInput = () => {
+    setInputVisible(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleSizeInputChange = (e) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleSizeInputConfirm = () => {
+    if (inputValue && !sizes.includes(inputValue)) {
+      setSizes([...sizes, inputValue]);
+    }
+    setInputVisible(false);
+    setInputValue("");
+  };
+
+  const handleColorClose = (removedColor) => {
+    setColors(colors.filter((color) => color !== removedColor));
+  };
+
+  const showColorInput = () => {
+    setColorInputVisible(true);
+    setTimeout(() => colorInputRef.current?.focus(), 0);
+  };
+
+  const handleColorInputChange = (e) => {
+    setColorInputValue(e.target.value);
+  };
+
+  const handleColorInputConfirm = () => {
+    if (colorInputValue && !colors.includes(colorInputValue)) {
+      setColors([...colors, colorInputValue]);
+    }
+    setColorInputVisible(false);
+    setColorInputValue("");
+  };
+
   const handleEdit = (product) => {
     setEditingProduct(product);
+    setRemovedPhotos([]);
     form.setFieldsValue({
       ...product,
-      details: product.details.replace(/<\/?[^>]+(>|$)/g, ""), // Clean HTML tags
+      details: product.details.replace(/<\/?[^>]+(>|$)/g, ""),
     });
+    setSizes(product.size || []); // Initialize sizes for editing
+    setColors(product.color || []); // Initialize colors for editing
     setIsModalOpen(true);
   };
 
@@ -50,36 +108,51 @@ const AllProduct = () => {
   const handleModalClose = () => {
     setIsModalOpen(false);
     setEditingProduct(null);
+    setSizes([]);
+    setColors([]);
     form.resetFields();
   };
 
   const handleFinish = async (values) => {
     try {
-      // Prepare data to send to the backend
-      const updatedProduct = {
-        ...editingProduct,
-        ...values,
-        category: editingProduct.category._id || editingProduct.category,
-        subCategory:
-          editingProduct.subCategory._id || editingProduct.subCategory,
-      };
-
       const formData = new FormData();
-      for (let key in updatedProduct) {
-        formData.append(key, updatedProduct[key]);
+      formData.append("title", values.title);
+      formData.append("details", values.details);
+      formData.append("price", values.price);
+      formData.append("discountPrice", values.discountPrice);
+      formData.append("description", values.description);
+      formData.append(
+        "category",
+        editingProduct.category._id || editingProduct.category
+      );
+      formData.append(
+        "subCategory",
+        editingProduct.subCategory._id || editingProduct.subCategory
+      );
+
+      // Append color and size arrays
+      sizes.forEach((size) => formData.append("size[]", size));
+      colors.forEach((color) => formData.append("color[]", color));
+
+      if (editingProduct.newPhotos) {
+        editingProduct.newPhotos.forEach((file) => {
+          formData.append("photos", file);
+        });
       }
 
-      // Append new photos if any
-      const files = editingProduct.newPhotos || [];
-      files.forEach((file) => {
-        formData.append("photos", file);
-      });
+      if (removedPhotos.length > 0) {
+        formData.append("removedPhotos", JSON.stringify(removedPhotos));
+      }
 
-      await axios.put(`/product/editProduct/${editingProduct._id}`, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
+      const { data } = await axios.put(
+        `/product/editProduct/${editingProduct._id}`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
 
       message.success("Product updated successfully");
       fetchProducts();
@@ -91,20 +164,29 @@ const AllProduct = () => {
   };
 
   const handlePhotoUpload = ({ file }) => {
-    // Update the editingProduct state with the new photo
     setEditingProduct((prev) => ({
       ...prev,
-      newPhotos: [...(prev.newPhotos || []), file], // Keep track of new photos
+      newPhotos: [...(prev.newPhotos || []), file],
     }));
   };
 
   const handlePhotoRemove = (index) => {
     const updatedPhotos = [...editingProduct.newPhotos];
-    updatedPhotos.splice(index, 1); // Remove the photo from newPhotos
+    updatedPhotos.splice(index, 1);
     setEditingProduct({
       ...editingProduct,
       newPhotos: updatedPhotos,
     });
+  };
+
+  const handleRemovePrevPhoto = (index) => {
+    const updatedPrevPhotos = [...editingProduct.photo];
+    const removedPhoto = updatedPrevPhotos.splice(index, 1);
+    setEditingProduct({
+      ...editingProduct,
+      photo: updatedPrevPhotos,
+    });
+    setRemovedPhotos([...removedPhotos, ...removedPhoto]);
   };
 
   const columns = [
@@ -118,7 +200,7 @@ const AllProduct = () => {
               key={index}
               src={`http://localhost:8000/${photo}`}
               alt="Product"
-              className="w-16 h-16 object-cover"
+              className="w-16 h-16 object-cover mr-2"
             />
           ))}
         </>
@@ -177,9 +259,7 @@ const AllProduct = () => {
           <Form.Item name="title" label="Title" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="details" label="Details">
-            <ReactQuill />
-          </Form.Item>
+
           <Form.Item name="price" label="Price" rules={[{ required: true }]}>
             <Input type="number" />
           </Form.Item>
@@ -190,46 +270,135 @@ const AllProduct = () => {
           >
             <Input type="number" />
           </Form.Item>
-          <Form.Item name="discription" label="Description">
+          <Form.Item name="description" label="Description">
             <Input.TextArea />
           </Form.Item>
-          <Form.Item name="color" label="Color">
-            <Input />
+          <Form.Item name="details" label="Details">
+            <ReactQuill />
           </Form.Item>
-          <Form.Item name="size" label="Size">
-            <Input />
-          </Form.Item>
+          <div className="flex gap-x-2">
+            {/* Size Tags with Input */}
+            <Form.Item className="flex" label="Product Size">
+              {sizes.map((size) => (
+                <Tag
+                  key={size}
+                  closable
+                  onClose={() => handleSizeClose(size)}
+                  closeIcon={<CloseCircleOutlined />}
+                >
+                  {size}
+                </Tag>
+              ))}
+              {inputVisible ? (
+                <Input
+                  ref={inputRef}
+                  type="text"
+                  size="small"
+                  className="w-24"
+                  value={inputValue}
+                  onChange={handleSizeInputChange}
+                  onBlur={handleSizeInputConfirm}
+                  onPressEnter={handleSizeInputConfirm}
+                />
+              ) : (
+                <Tag onClick={showSizeInput} className="cursor-pointer">
+                  <PlusOutlined /> New Size
+                </Tag>
+              )}
+            </Form.Item>
 
+            {/* Color Tags with Input */}
+            <Form.Item className="flex" label="Product Color">
+              {colors.map((color) => (
+                <Tag
+                  key={color}
+                  closable
+                  onClose={() => handleColorClose(color)}
+                  closeIcon={<CloseCircleOutlined />}
+                >
+                  {color}
+                </Tag>
+              ))}
+              {colorInputVisible ? (
+                <Input
+                  ref={colorInputRef}
+                  type="text"
+                  size="small"
+                  className="w-24"
+                  value={colorInputValue}
+                  onChange={handleColorInputChange}
+                  onBlur={handleColorInputConfirm}
+                  onPressEnter={handleColorInputConfirm}
+                />
+              ) : (
+                <Tag onClick={showColorInput} className="cursor-pointer">
+                  <PlusOutlined /> New Color
+                </Tag>
+              )}
+            </Form.Item>
+          </div>
+
+          {/* Image Upload Section */}
           <div className="mb-4">
+            <label>Current Photos:</label>
+            <div className="flex gap-2 mt-2">
+              {editingProduct?.photo?.map((photo, index) => (
+                <div key={index} className="relative">
+                  <img
+                    src={`http://localhost:8000/${photo}`}
+                    alt="Product"
+                    className="w-16 h-16 object-cover"
+                  />
+                  <Button
+                    icon={<CloseCircleOutlined />}
+                    size="small"
+                    danger
+                    className="absolute top-0 right-0"
+                    onClick={() => handleRemovePrevPhoto(index)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Form.Item label="Upload New Photos">
             <Upload
               listType="picture"
-              beforeUpload={() => false}
-              onChange={handlePhotoUpload}
               multiple
+              showUploadList={true}
+              beforeUpload={() => false} // Prevent automatic upload
+              onChange={handlePhotoUpload}
             >
-              <Button icon={<UploadOutlined />}>Upload Photo</Button>
+              <Button icon={<UploadOutlined />}>Upload Photos</Button>
             </Upload>
-            {editingProduct?.newPhotos?.map((file, index) => (
-              <div key={index} className="relative mt-2">
-                <img
-                  src={URL.createObjectURL(file)} // Create a local URL for the uploaded image
-                  alt="Product"
-                  className="w-16 h-16"
-                />
-                <Button
-                  danger
-                  onClick={() => handlePhotoRemove(index)}
-                  className="absolute top-0 right-0"
-                >
-                  Remove
-                </Button>
-              </div>
-            ))}
+          </Form.Item>
+
+          {/* Display New Photos */}
+          <div className="mb-4">
+            <label>New Photos:</label>
+            <div className="flex gap-2 mt-2">
+              {editingProduct?.newPhotos?.map((file, index) => (
+                <div key={index} className="relative">
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt="New Product"
+                    className="w-16 h-16 object-cover"
+                  />
+                  <Button
+                    icon={<CloseCircleOutlined />}
+                    size="small"
+                    danger
+                    className="absolute top-0 right-0"
+                    onClick={() => handlePhotoRemove(index)}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           <Form.Item>
             <Button type="primary" htmlType="submit">
-              Save
+              Save Changes
             </Button>
           </Form.Item>
         </Form>

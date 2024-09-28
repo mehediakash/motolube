@@ -169,7 +169,7 @@ const UploadProduct = () => {
     formData.append("title", values.title);
     formData.append("discountPrice", values.discountPrice);
     formData.append("price", values.price);
-    formData.append("discription", values.discription);
+    formData.append("description", values.description);
     formData.append("details", values.details);
 
     sizes.forEach((size) => formData.append("size[]", size));
@@ -321,7 +321,7 @@ const UploadProduct = () => {
               >
                 <Input />
               </Form.Item>
-              <Form.Item label="Product Description" name="discription">
+              <Form.Item label="Product Description" name="description">
                 <Input />
               </Form.Item>
 

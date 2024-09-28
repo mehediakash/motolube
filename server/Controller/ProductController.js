@@ -3,10 +3,11 @@ const path = require("path");
 
 const uploadProductModel = require("../model/uploadProductModel");
 const upload = require("../utils/multerConfig");
+const prodcutUploads = require("../utils/prodcutUploads");
 const brandModel = require("../model/brandModel");
 
 async function uploadProduct(req, res) {
-  upload(req, res, async (err) => {
+  prodcutUploads(req, res, async (err) => {
     if (err) {
       return res
         .status(500)
@@ -19,7 +20,7 @@ async function uploadProduct(req, res) {
         details,
         price,
         discountPrice,
-        discription,
+        description,
         color,
         size,
         category,
@@ -35,7 +36,7 @@ async function uploadProduct(req, res) {
         price,
         color,
         discountPrice,
-        discription,
+        description,
         size,
         photo: photoPaths,
         category,
@@ -98,7 +99,7 @@ async function getproduct(req, res) {
 }
 
 async function editProduct(req, res) {
-  upload(req, res, async (err) => {
+  upload.array("photos")(req, res, async (err) => {
     if (err) {
       return res
         .status(500)
@@ -119,34 +120,55 @@ async function editProduct(req, res) {
         subCategory,
       } = req.body;
 
-      // Collect the file paths for any uploaded photos
-      const photoPaths = req.files ? req.files.map((file) => file.path) : null;
+      const removedPhotos = req.body.removedPhotos
+        ? JSON.parse(req.body.removedPhotos)
+        : [];
+      const photoPaths = req.files ? req.files.map((file) => file.path) : [];
 
-      // Update the product fields
-      const updatedProduct = await uploadProductModel.findByIdAndUpdate(
-        id,
-        {
-          title,
-          details,
-          price,
-          discountPrice,
-          description,
-          color,
-          size,
-          photo: photoPaths || undefined, // Only update if new photos are uploaded
-          category,
-          subCategory,
-        },
-        { new: true } // Return the updated document
-      );
+      // Find the product to update
+      const product = await uploadProductModel.findById(id);
 
-      if (!updatedProduct) {
+      if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
 
+      // Remove the deleted photos from the filesystem and product's photo array
+      if (removedPhotos.length > 0) {
+        removedPhotos.forEach((photoPath) => {
+          const fullPath = path.join(__dirname, "../", photoPath);
+
+          // Remove photo from the filesystem
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+          }
+
+          // Remove photo from the database
+          product.photo = product.photo.filter((p) => p !== photoPath);
+        });
+      }
+
+      // Push new photos to the photo array
+      if (photoPaths.length > 0) {
+        product.photo.push(...photoPaths);
+      }
+
+      // Update other fields
+      product.title = title;
+      product.details = details;
+      product.price = price;
+      product.discountPrice = discountPrice;
+      product.description = description;
+      product.color = color;
+      product.size = size;
+      product.category = category;
+      product.subCategory = subCategory;
+
+      // Save the updated product
+      await product.save();
+
       res.status(200).json({
         message: "Product updated successfully",
-        product: updatedProduct,
+        product: product,
       });
     } catch (error) {
       res
@@ -167,7 +189,7 @@ async function deleteProduct(req, res) {
     }
 
     // Delete product photos from the uploads folder
-    product.photos.forEach((photo) => {
+    product.photo.forEach((photo) => {
       const photoPath = path.join(__dirname, "../", photo); // Construct the full path to the photo
       if (fs.existsSync(photoPath)) {
         fs.unlinkSync(photoPath); // Delete the photo
